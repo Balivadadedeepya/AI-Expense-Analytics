@@ -1,10 +1,7 @@
-import sqlite3
-from datetime import date
-
-import pandas as pd
 import streamlit as st
-from sklearn.ensemble import IsolationForest
-
+import pandas as pd
+import numpy as np
+import plotly.express as px
 
 # ---------------------------------------------------------
 # PAGE CONFIGURATION
@@ -16,103 +13,44 @@ st.set_page_config(
     layout="wide"
 )
 
-
 # ---------------------------------------------------------
-# DATABASE
-# ---------------------------------------------------------
-
-DB_NAME = "expenses.db"
-
-
-def get_connection():
-    return sqlite3.connect(DB_NAME, check_same_thread=False)
-
-
-def initialize_database():
-    conn = get_connection()
-
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS transactions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            transaction_date TEXT NOT NULL,
-            description TEXT NOT NULL,
-            category TEXT NOT NULL,
-            transaction_type TEXT NOT NULL,
-            amount REAL NOT NULL
-        )
-    """)
-
-    conn.commit()
-    conn.close()
-
-
-initialize_database()
-
-
-# ---------------------------------------------------------
-# DATABASE FUNCTIONS
+# CUSTOM STYLING
 # ---------------------------------------------------------
 
-def add_transaction(transaction_date, description, category, transaction_type, amount):
-    conn = get_connection()
+st.markdown("""
+<style>
+    .main {
+        background-color: #0e1117;
+    }
 
-    conn.execute(
-        """
-        INSERT INTO transactions
-        (transaction_date, description, category, transaction_type, amount)
-        VALUES (?, ?, ?, ?, ?)
-        """,
-        (
-            str(transaction_date),
-            description,
-            category,
-            transaction_type,
-            amount
-        )
-    )
+    .metric-card {
+        padding: 20px;
+        border-radius: 15px;
+        background: linear-gradient(135deg, #172033, #202b40);
+        text-align: center;
+        border: 1px solid #303b52;
+    }
 
-    conn.commit()
-    conn.close()
+    .metric-title {
+        font-size: 15px;
+        color: #aab4c3;
+    }
 
+    .metric-value {
+        font-size: 30px;
+        font-weight: bold;
+        color: #ffffff;
+    }
 
-def delete_transaction(transaction_id):
-    conn = get_connection()
-
-    conn.execute(
-        "DELETE FROM transactions WHERE id = ?",
-        (transaction_id,)
-    )
-
-    conn.commit()
-    conn.close()
-
-
-def load_transactions():
-    conn = get_connection()
-
-    df = pd.read_sql_query(
-        """
-        SELECT
-            id,
-            transaction_date,
-            description,
-            category,
-            transaction_type,
-            amount
-        FROM transactions
-        ORDER BY transaction_date DESC, id DESC
-        """,
-        conn
-    )
-
-    conn.close()
-
-    if not df.empty:
-        df["transaction_date"] = pd.to_datetime(df["transaction_date"])
-        df["amount"] = pd.to_numeric(df["amount"])
-
-    return df
-
+    .insight-box {
+        padding: 18px;
+        border-radius: 12px;
+        background-color: #172033;
+        border-left: 5px solid #00c2ff;
+        margin-bottom: 12px;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # ---------------------------------------------------------
 # HEADER
@@ -120,460 +58,511 @@ def load_transactions():
 
 st.title("💰 AI Expense Analytics")
 st.markdown(
-    "### Track spending, analyze financial patterns, and discover unusual transactions."
+    "### 📊 Track spending • Discover patterns • Generate financial insights"
 )
 
-st.divider()
+st.markdown("---")
 
+# ---------------------------------------------------------
+# SAMPLE DATA
+# ---------------------------------------------------------
+
+sample_data = pd.DataFrame({
+    "Date": pd.to_datetime([
+        "2026-01-03", "2026-01-05", "2026-01-10",
+        "2026-01-15", "2026-01-20", "2026-02-02",
+        "2026-02-08", "2026-02-14", "2026-02-20",
+        "2026-03-01", "2026-03-05", "2026-03-12"
+    ]),
+    "Category": [
+        "Food", "Transport", "Shopping",
+        "Bills", "Entertainment", "Food",
+        "Shopping", "Transport", "Bills",
+        "Food", "Entertainment", "Shopping"
+    ],
+    "Amount": [
+        450, 200, 1500,
+        1200, 600, 700,
+        1800, 300, 1300,
+        550, 800, 2100
+    ],
+    "Description": [
+        "Restaurant", "Bus", "Clothes",
+        "Electricity", "Movie", "Groceries",
+        "Online Shopping", "Cab", "Internet",
+        "Restaurant", "Games", "Online Shopping"
+    ]
+})
 
 # ---------------------------------------------------------
 # SIDEBAR
 # ---------------------------------------------------------
 
-st.sidebar.title("⚙️ Add Transaction")
+st.sidebar.header("⚙️ Data Options")
 
-transaction_date = st.sidebar.date_input(
-    "Date",
-    value=date.today()
+data_source = st.sidebar.radio(
+    "Choose data source",
+    ["Use Sample Data", "Upload CSV", "Add Expenses Manually"]
 )
-
-description = st.sidebar.text_input(
-    "Description",
-    placeholder="e.g. Grocery shopping"
-)
-
-category = st.sidebar.selectbox(
-    "Category",
-    [
-        "Food",
-        "Shopping",
-        "Transport",
-        "Bills",
-        "Entertainment",
-        "Health",
-        "Education",
-        "Travel",
-        "Salary",
-        "Investment",
-        "Other"
-    ]
-)
-
-transaction_type = st.sidebar.selectbox(
-    "Transaction Type",
-    ["Expense", "Income"]
-)
-
-amount = st.sidebar.number_input(
-    "Amount",
-    min_value=0.01,
-    step=100.0,
-    format="%.2f"
-)
-
-if st.sidebar.button("➕ Add Transaction", use_container_width=True):
-
-    if description.strip() == "":
-        st.sidebar.error("Please enter a description.")
-
-    elif amount <= 0:
-        st.sidebar.error("Amount must be greater than zero.")
-
-    else:
-        add_transaction(
-            transaction_date,
-            description.strip(),
-            category,
-            transaction_type,
-            amount
-        )
-
-        st.sidebar.success("Transaction added successfully!")
-        st.rerun()
-
 
 # ---------------------------------------------------------
-# LOAD DATA
+# USE SAMPLE DATA
 # ---------------------------------------------------------
 
-df = load_transactions()
+if data_source == "Use Sample Data":
 
+    df = sample_data.copy()
 
 # ---------------------------------------------------------
-# EMPTY STATE
+# UPLOAD CSV
 # ---------------------------------------------------------
 
-if df.empty:
+elif data_source == "Upload CSV":
 
-    st.info(
-        "👋 Welcome! Add your first transaction using the sidebar "
-        "to start analyzing your finances."
+    uploaded_file = st.sidebar.file_uploader(
+        "Upload expense CSV",
+        type=["csv"]
     )
 
-    st.markdown("### What this dashboard provides")
+    if uploaded_file is not None:
 
-    col1, col2, col3 = st.columns(3)
+        try:
+            df = pd.read_csv(uploaded_file)
 
-    with col1:
-        st.markdown("#### 📊 Analytics")
-        st.write("Understand where your money goes.")
+            required_columns = ["Date", "Category", "Amount"]
 
-    with col2:
-        st.markdown("#### 📈 Trends")
-        st.write("Track spending patterns over time.")
+            missing_columns = [
+                column for column in required_columns
+                if column not in df.columns
+            ]
 
-    with col3:
-        st.markdown("#### 🚨 Anomaly Detection")
-        st.write("Identify unusually large transactions.")
+            if missing_columns:
+                st.error(
+                    f"Missing required columns: {', '.join(missing_columns)}"
+                )
+                st.stop()
 
-    st.stop()
+            df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+            df["Amount"] = pd.to_numeric(df["Amount"], errors="coerce")
 
+            df = df.dropna(subset=["Date", "Amount", "Category"])
+
+        except Exception as error:
+            st.error(f"Could not read the CSV file: {error}")
+            st.stop()
+
+    else:
+        st.info(
+            "Upload a CSV file or select 'Use Sample Data' from the sidebar."
+        )
+        st.stop()
 
 # ---------------------------------------------------------
-# FINANCIAL METRICS
+# MANUAL EXPENSE ENTRY
 # ---------------------------------------------------------
 
-income = df.loc[
-    df["transaction_type"] == "Income",
-    "amount"
-].sum()
+else:
 
-expenses = df.loc[
-    df["transaction_type"] == "Expense",
-    "amount"
-].sum()
+    st.sidebar.subheader("➕ Add Expense")
 
-balance = income - expenses
+    if "manual_expenses" not in st.session_state:
+        st.session_state.manual_expenses = []
 
-transaction_count = len(df)
+    expense_date = st.sidebar.date_input(
+        "Date"
+    )
 
+    category = st.sidebar.selectbox(
+        "Category",
+        [
+            "Food",
+            "Transport",
+            "Shopping",
+            "Bills",
+            "Entertainment",
+            "Education",
+            "Health",
+            "Travel",
+            "Other"
+        ]
+    )
+
+    amount = st.sidebar.number_input(
+        "Amount (₹)",
+        min_value=0.0,
+        step=50.0
+    )
+
+    description = st.sidebar.text_input(
+        "Description"
+    )
+
+    if st.sidebar.button("Add Expense"):
+
+        if amount <= 0:
+            st.sidebar.warning("Enter an amount greater than ₹0.")
+        else:
+
+            st.session_state.manual_expenses.append({
+                "Date": pd.Timestamp(expense_date),
+                "Category": category,
+                "Amount": amount,
+                "Description": description
+            })
+
+            st.sidebar.success("Expense added!")
+
+    if st.session_state.manual_expenses:
+
+        df = pd.DataFrame(st.session_state.manual_expenses)
+
+    else:
+
+        df = sample_data.copy()
+
+        st.info(
+            "No manual expenses added yet. Sample data is being displayed."
+        )
+
+# ---------------------------------------------------------
+# DATA CLEANING
+# ---------------------------------------------------------
+
+df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+df["Amount"] = pd.to_numeric(df["Amount"], errors="coerce")
+
+df = df.dropna(subset=["Date", "Amount", "Category"])
+
+df["Category"] = df["Category"].astype(str).str.strip()
+
+df["Month"] = df["Date"].dt.strftime("%b %Y")
+
+df["Month_Number"] = df["Date"].dt.to_period("M")
+
+df = df.sort_values("Date")
+
+# ---------------------------------------------------------
+# KPI CALCULATIONS
+# ---------------------------------------------------------
+
+total_spending = df["Amount"].sum()
+
+average_expense = df["Amount"].mean()
+
+number_of_transactions = len(df)
+
+highest_expense = df["Amount"].max()
+
+highest_category = (
+    df.groupby("Category")["Amount"]
+    .sum()
+    .idxmax()
+)
+
+highest_category_amount = (
+    df.groupby("Category")["Amount"]
+    .sum()
+    .max()
+)
+
+# ---------------------------------------------------------
+# KPI DASHBOARD
+# ---------------------------------------------------------
+
+st.subheader("📊 Financial Overview")
 
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
-    st.metric(
-        "💵 Total Income",
-        f"₹{income:,.2f}"
+    st.markdown(
+        f"""
+        <div class="metric-card">
+            <div class="metric-title">💰 Total Spending</div>
+            <div class="metric-value">₹{total_spending:,.0f}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
     )
 
 with col2:
-    st.metric(
-        "💸 Total Expenses",
-        f"₹{expenses:,.2f}"
+    st.markdown(
+        f"""
+        <div class="metric-card">
+            <div class="metric-title">📈 Average Expense</div>
+            <div class="metric-value">₹{average_expense:,.0f}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
     )
 
 with col3:
-    st.metric(
-        "💰 Balance",
-        f"₹{balance:,.2f}"
+    st.markdown(
+        f"""
+        <div class="metric-card">
+            <div class="metric-title">🧾 Transactions</div>
+            <div class="metric-value">{number_of_transactions}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
     )
 
 with col4:
-    st.metric(
-        "🧾 Transactions",
-        transaction_count
+    st.markdown(
+        f"""
+        <div class="metric-card">
+            <div class="metric-title">🔥 Highest Expense</div>
+            <div class="metric-value">₹{highest_expense:,.0f}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
     )
 
-
-st.divider()
-
+st.markdown("---")
 
 # ---------------------------------------------------------
-# FILTERS
+# CATEGORY ANALYSIS
 # ---------------------------------------------------------
 
-st.subheader("🔎 Filter Transactions")
+st.subheader("🏷️ Spending by Category")
 
-filter_col1, filter_col2, filter_col3 = st.columns(3)
+category_summary = (
+    df.groupby("Category", as_index=False)["Amount"]
+    .sum()
+    .sort_values("Amount", ascending=False)
+)
 
-with filter_col1:
-    selected_category = st.multiselect(
-        "Category",
-        sorted(df["category"].unique())
+col1, col2 = st.columns(2)
+
+with col1:
+
+    fig_category = px.bar(
+        category_summary,
+        x="Category",
+        y="Amount",
+        title="Total Spending by Category",
+        labels={
+            "Amount": "Spending (₹)",
+            "Category": "Category"
+        },
+        text_auto=".0f"
     )
 
-with filter_col2:
-    selected_type = st.multiselect(
-        "Type",
-        ["Income", "Expense"]
+    fig_category.update_layout(
+        xaxis_title="Category",
+        yaxis_title="Amount (₹)",
+        template="plotly_dark"
     )
 
-with filter_col3:
-    search_text = st.text_input(
-        "Search",
-        placeholder="Search description..."
+    st.plotly_chart(
+        fig_category,
+        use_container_width=True
     )
 
+with col2:
 
-filtered_df = df.copy()
-
-if selected_category:
-    filtered_df = filtered_df[
-        filtered_df["category"].isin(selected_category)
-    ]
-
-if selected_type:
-    filtered_df = filtered_df[
-        filtered_df["transaction_type"].isin(selected_type)
-    ]
-
-if search_text:
-    filtered_df = filtered_df[
-        filtered_df["description"]
-        .str.contains(search_text, case=False, na=False)
-    ]
-
-
-# ---------------------------------------------------------
-# DASHBOARD
-# ---------------------------------------------------------
-
-st.subheader("📊 Spending Dashboard")
-
-expense_df = df[
-    df["transaction_type"] == "Expense"
-].copy()
-
-
-chart_col1, chart_col2 = st.columns(2)
-
-
-with chart_col1:
-
-    st.markdown("#### Spending by Category")
-
-    if not expense_df.empty:
-
-        category_data = (
-            expense_df
-            .groupby("category")["amount"]
-            .sum()
-            .sort_values(ascending=False)
-        )
-
-        st.bar_chart(category_data)
-
-    else:
-        st.info("No expense data available.")
-
-
-with chart_col2:
-
-    st.markdown("#### Monthly Spending Trend")
-
-    if not expense_df.empty:
-
-        monthly_data = (
-            expense_df
-            .assign(
-                month=expense_df["transaction_date"].dt.to_period("M")
-            )
-            .groupby("month")["amount"]
-            .sum()
-        )
-
-        monthly_data.index = monthly_data.index.astype(str)
-
-        st.line_chart(monthly_data)
-
-    else:
-        st.info("No expense data available.")
-
-
-st.divider()
-
-
-# ---------------------------------------------------------
-# SPENDING INSIGHTS
-# ---------------------------------------------------------
-
-st.subheader("💡 Spending Insights")
-
-if not expense_df.empty:
-
-    highest_category = (
-        expense_df.groupby("category")["amount"]
-        .sum()
-        .idxmax()
+    fig_pie = px.pie(
+        category_summary,
+        names="Category",
+        values="Amount",
+        title="Expense Distribution",
+        hole=0.45
     )
 
-    highest_amount = (
-        expense_df.groupby("category")["amount"]
-        .sum()
-        .max()
+    fig_pie.update_layout(
+        template="plotly_dark"
     )
 
-    average_expense = expense_df["amount"].mean()
+    st.plotly_chart(
+        fig_pie,
+        use_container_width=True
+    )
 
-    insight_col1, insight_col2, insight_col3 = st.columns(3)
+# ---------------------------------------------------------
+# MONTHLY ANALYSIS
+# ---------------------------------------------------------
 
-    with insight_col1:
-        st.metric(
-            "Highest Spending Category",
-            highest_category
-        )
+st.subheader("📅 Monthly Spending Trend")
 
-    with insight_col2:
-        st.metric(
-            "Category Spending",
-            f"₹{highest_amount:,.2f}"
-        )
+monthly_summary = (
+    df.groupby("Month_Number")["Amount"]
+    .sum()
+    .reset_index()
+    .sort_values("Month_Number")
+)
 
-    with insight_col3:
-        st.metric(
-            "Average Expense",
-            f"₹{average_expense:,.2f}"
-        )
+monthly_summary["Month"] = (
+    monthly_summary["Month_Number"]
+    .astype(str)
+)
 
-    if income > 0:
+fig_monthly = px.line(
+    monthly_summary,
+    x="Month",
+    y="Amount",
+    markers=True,
+    title="Monthly Spending Trend"
+)
 
-        savings_rate = (
-            (income - expenses) / income
-        ) * 100
+fig_monthly.update_layout(
+    xaxis_title="Month",
+    yaxis_title="Spending (₹)",
+    template="plotly_dark"
+)
 
-        st.info(
-            f"Your current income-to-expense calculation gives a "
-            f"savings rate of **{savings_rate:.1f}%**."
-        )
+st.plotly_chart(
+    fig_monthly,
+    use_container_width=True
+)
 
-    st.write(
-        f"Your largest spending category is **{highest_category}** "
-        f"with total spending of **₹{highest_amount:,.2f}**."
+# ---------------------------------------------------------
+# TOP EXPENSES
+# ---------------------------------------------------------
+
+st.subheader("🔥 Top Expenses")
+
+top_expenses = (
+    df.sort_values("Amount", ascending=False)
+    .head(5)
+    .copy()
+)
+
+display_columns = [
+    column for column in
+    ["Date", "Category", "Amount", "Description"]
+    if column in top_expenses.columns
+]
+
+st.dataframe(
+    top_expenses[display_columns],
+    use_container_width=True,
+    hide_index=True
+)
+
+# ---------------------------------------------------------
+# AUTOMATED INSIGHTS
+# ---------------------------------------------------------
+
+st.subheader("🧠 Automated Spending Insights")
+
+category_percentage = (
+    highest_category_amount / total_spending * 100
+    if total_spending > 0
+    else 0
+)
+
+insight_1 = (
+    f"Your highest spending category is **{highest_category}**, "
+    f"accounting for approximately **{category_percentage:.1f}%** "
+    f"of your total spending."
+)
+
+st.markdown(
+    f"""
+    <div class="insight-box">
+        💡 {insight_1}
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+if category_percentage > 40:
+
+    message = (
+        f"More than 40% of your spending is concentrated in "
+        f"{highest_category}. Reviewing this category could help "
+        f"reduce unnecessary expenses."
     )
 
 else:
 
-    st.info("Add expense transactions to generate insights.")
-
-
-# ---------------------------------------------------------
-# ANOMALY DETECTION
-# ---------------------------------------------------------
-
-st.divider()
-
-st.subheader("🚨 Unusual Spending Detection")
-
-if len(expense_df) >= 5:
-
-    model = IsolationForest(
-        contamination=0.1,
-        random_state=42
+    message = (
+        "Your spending is relatively distributed across categories. "
+        "Continue monitoring the categories with the highest growth."
     )
 
-    expense_df["anomaly"] = model.fit_predict(
-        expense_df[["amount"]]
+st.markdown(
+    f"""
+    <div class="insight-box">
+        📌 {message}
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+if average_expense > 1000:
+
+    message = (
+        "Your average transaction is above ₹1,000. "
+        "Consider reviewing high-value purchases individually."
     )
-
-    unusual = expense_df[
-        expense_df["anomaly"] == -1
-    ].copy()
-
-    if unusual.empty:
-
-        st.success(
-            "No unusually large spending transactions were detected."
-        )
-
-    else:
-
-        st.warning(
-            f"{len(unusual)} potentially unusual transaction(s) detected."
-        )
-
-        display_columns = [
-            "transaction_date",
-            "description",
-            "category",
-            "amount"
-        ]
-
-        st.dataframe(
-            unusual[display_columns],
-            use_container_width=True,
-            hide_index=True
-        )
 
 else:
 
-    st.info(
-        "Add at least 5 expense transactions to enable "
-        "anomaly detection."
+    message = (
+        "Your average transaction is below ₹1,000, "
+        "indicating relatively smaller individual expenses."
     )
 
+st.markdown(
+    f"""
+    <div class="insight-box">
+        📊 {message}
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
 # ---------------------------------------------------------
-# TRANSACTION TABLE
+# CATEGORY TABLE
 # ---------------------------------------------------------
 
-st.divider()
+st.subheader("📋 Category Summary")
 
-st.subheader("📋 Transactions")
+category_table = category_summary.copy()
 
-if filtered_df.empty:
+category_table["Percentage"] = (
+    category_table["Amount"] /
+    total_spending *
+    100
+).round(2)
 
-    st.info("No transactions match the selected filters.")
+category_table["Amount"] = category_table["Amount"].round(2)
 
-else:
-
-    display_df = filtered_df.copy()
-
-    display_df["transaction_date"] = (
-        display_df["transaction_date"]
-        .dt.strftime("%Y-%m-%d")
-    )
-
-    st.dataframe(
-        display_df,
-        use_container_width=True,
-        hide_index=True
-    )
-
-
-# ---------------------------------------------------------
-# DELETE TRANSACTION
-# ---------------------------------------------------------
-
-st.subheader("🗑️ Delete a Transaction")
-
-if not df.empty:
-
-    transaction_options = {
-        f"{row['transaction_date'].strftime('%Y-%m-%d')} | "
-        f"{row['description']} | "
-        f"₹{row['amount']:,.2f}":
-        int(row["id"])
-        for _, row in df.iterrows()
+category_table = category_table.rename(
+    columns={
+        "Category": "Category",
+        "Amount": "Total Spending (₹)",
+        "Percentage": "Share (%)"
     }
+)
 
-    selected_transaction = st.selectbox(
-        "Select transaction",
-        list(transaction_options.keys())
-    )
+st.dataframe(
+    category_table,
+    use_container_width=True,
+    hide_index=True
+)
 
-    if st.button(
-        "Delete Selected Transaction",
-        type="secondary"
-    ):
+# ---------------------------------------------------------
+# DOWNLOAD DATA
+# ---------------------------------------------------------
 
-        transaction_id = transaction_options[
-            selected_transaction
-        ]
+st.subheader("📥 Export Data")
 
-        delete_transaction(transaction_id)
+csv_data = df.to_csv(index=False).encode("utf-8")
 
-        st.success("Transaction deleted successfully.")
-
-        st.rerun()
-
+st.download_button(
+    label="Download Expense Data as CSV",
+    data=csv_data,
+    file_name="expense_analysis.csv",
+    mime="text/csv"
+)
 
 # ---------------------------------------------------------
 # FOOTER
 # ---------------------------------------------------------
 
-st.divider()
+st.markdown("---")
 
 st.caption(
-    "AI Expense Analytics • Built with Python, Pandas, "
-    "Scikit-learn, SQLite and Streamlit"
+    "AI Expense Analytics • Built with Python, Pandas, Plotly and Streamlit"
 )
