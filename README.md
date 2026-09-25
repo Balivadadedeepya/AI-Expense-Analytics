@@ -1,21 +1,23 @@
 # 💰 AI Expense Analytics
 
-An AI-powered expense analytics application built with Python and Streamlit to help users track spending, analyze financial patterns, and generate actionable insights.
+An interactive expense analytics dashboard built with Python and Streamlit to track spending, visualize financial patterns, and generate actionable insights.
 
 ## 🚀 Live Demo
 
-Coming soon.
+[Launch AI Expense Analytics]https://ai-expense-analytics-agmdl7u7lhyrvnrwfhmzhx.streamlit.app/
 
 ## ✨ Features
 
-- 📊 Expense tracking and analysis
-- 💰 Spending pattern analysis
-- 📈 Interactive financial visualizations
-- 🧠 Automated spending insights
-- 🏷️ Expense category analysis
-- 📅 Date-based expense analysis
-- 💡 Actionable financial recommendations
-- 🎨 User-friendly Streamlit dashboard
+- 📊 Financial overview dashboard
+- 💰 Total spending analysis
+- 🧾 Transaction tracking
+- 📈 Spending by category
+- 📅 Spending trends
+- 🔍 Expense pattern analysis
+- 💡 Automated financial insights
+- 📂 Upload custom expense data
+- ✏️ Add expenses manually
+- 📊 Interactive Plotly visualizations
 
 ## 🛠️ Tech Stack
 
@@ -24,16 +26,20 @@ Coming soon.
 - Pandas
 - NumPy
 - Plotly
-- Data Analysis
-- Data Visualization
 
-## 📂 Project Structure
+## 📌 Project Highlights
 
-```text
-AI-Expense-Analytics/
-│
-├── app.py
-├── requirements.txt
-├── README.md
-├── LICENSE
-└── .gitignore
+This project demonstrates practical skills in:
+
+- Data analysis
+- Data visualization
+- Exploratory data analysis
+- Interactive dashboard development
+- Python programming
+- Financial data analytics
+
+## ▶️ Run Locally
+
+```bash
+pip install -r requirements.txt
+streamlit run app.py
